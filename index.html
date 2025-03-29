@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工时记录</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-4">
+    <h2 class="text-center">工时记录系统</h2>
+
+    <div class="mb-3">
+        <label for="datePicker" class="form-label">选择日期</label>
+        <input type="date" id="datePicker" class="form-control">
+    </div>
+
+    <div id="timeInputs">
+        <label class="form-label">打卡时间</label>
+        <input type="time" id="startWork" class="form-control mb-2" placeholder="上班打卡">
+        <input type="time" id="break1Start" class="form-control mb-2" placeholder="第一次休息开始">
+        <input type="time" id="break1End" class="form-control mb-2" placeholder="第一次休息结束">
+        <input type="time" id="break2Start" class="form-control mb-2" placeholder="第二次休息开始">
+        <input type="time" id="break2End" class="form-control mb-2" placeholder="第二次休息结束">
+        <input type="time" id="endWork" class="form-control mb-3" placeholder="下班打卡">
+    </div>
+
+    <button class="btn btn-primary w-100" onclick="calculateHours()">计算工时</button>
+
+    <h4 class="mt-3">结果</h4>
+    <p id="dailyResult">带薪工时: 0 小时</p>
+
+    <button class="btn btn-success w-100" onclick="saveData()">保存记录</button>
+    <button class="btn btn-danger w-100 mt-2" onclick="clearData()">清除所有数据</button>
+
+    <h4 class="mt-3">选择周查看累计工时</h4>
+    <input type="week" id="weekPicker" class="form-control mb-3">
+    <p id="weeklyHours">该周带薪工时: 0 小时</p>
+
+    <h4 class="mt-3">已记录时间</h4>
+    <ul id="recordedTimes" class="list-group"></ul>
+</div>
+
+<script>
+    function timeToMinutes(time) {
+        if (!time) return 0;
+        let [h, m] = time.split(':').map(Number);
+        return h * 60 + m;
+    }
+
+    function calculateHours() {
+        let startWork = timeToMinutes(document.getElementById("startWork").value);
+        let break1Start = timeToMinutes(document.getElementById("break1Start").value);
+        let break1End = timeToMinutes(document.getElementById("break1End").value);
+        let break2Start = timeToMinutes(document.getElementById("break2Start").value);
+        let break2End = timeToMinutes(document.getElementById("break2End").value);
+        let endWork = timeToMinutes(document.getElementById("endWork").value);
+
+        if (!startWork || !endWork) {
+            alert("请至少输入上班和下班时间！");
+            return;
+        }
+
+        let totalWorkMinutes = endWork - startWork;
+        let breakMinutes = (break1End - break1Start) + (break2End - break2Start);
+        let paidBreak = Math.min(breakMinutes, 20);
+        let paidWorkMinutes = totalWorkMinutes - (breakMinutes - paidBreak);
+
+        let paidHours = (paidWorkMinutes / 60).toFixed(2);
+        document.getElementById("dailyResult").innerText = `带薪工时: ${paidHours} 小时`;
+    }
+
+    function saveData() {
+        let date = document.getElementById("datePicker").value;
+        if (!date) {
+            alert("请选择日期！");
+            return;
+        }
+
+        let times = {
+            startWork: document.getElementById("startWork").value,
+            break1Start: document.getElementById("break1Start").value,
+            break1End: document.getElementById("break1End").value,
+            break2Start: document.getElementById("break2Start").value,
+            break2End: document.getElementById("break2End").value,
+            endWork: document.getElementById("endWork").value,
+            dailyHours: document.getElementById("dailyResult").innerText
+        };
+
+        let weeklyData = JSON.parse(localStorage.getItem("weeklyData")) || {};
+        weeklyData[date] = times;
+
+        localStorage.setItem("weeklyData", JSON.stringify(weeklyData));
+        loadSavedData();
+        updateWeeklyHours();
+    }
+
+    function loadSavedData() {
+        let date = document.getElementById("datePicker").value;
+        let weeklyData = JSON.parse(localStorage.getItem("weeklyData")) || {};
+        let times = weeklyData[date];
+
+        if (times) {
+            document.getElementById("startWork").value = times.startWork;
+            document.getElementById("break1Start").value = times.break1Start;
+            document.getElementById("break1End").value = times.break1End;
+            document.getElementById("break2Start").value = times.break2Start;
+            document.getElementById("break2End").value = times.break2End;
+            document.getElementById("endWork").value = times.endWork;
+            document.getElementById("dailyResult").innerText = times.dailyHours;
+        }
+
+        displayRecordedTimes();
+    }
+
+    function displayRecordedTimes() {
+        let weeklyData = JSON.parse(localStorage.getItem("weeklyData")) || {};
+        let recordedTimesList = document.getElementById("recordedTimes");
+        recordedTimesList.innerHTML = "";
+
+        Object.keys(weeklyData).forEach(date => {
+            let li = document.createElement("li");
+            li.className = "list-group-item";
+            li.innerText = `${date} - ${weeklyData[date].dailyHours}`;
+            recordedTimesList.appendChild(li);
+        });
+    }
+
+    function updateWeeklyHours() {
+        let selectedWeek = document.getElementById("weekPicker").value;
+        if (!selectedWeek) return;
+
+        let [year, week] = selectedWeek.split("-W").map(Number);
+        if (!year || !week) return;
+
+        let startOfYear = new Date(year, 0, 1);
+        let daysOffset = (week - 1) * 7 + (startOfYear.getDay() <= 4 ? 1 - startOfYear.getDay() : 8 - startOfYear.getDay());
+        let startOfWeek = new Date(year, 0, startOfYear.getDate() + daysOffset);
+
+        let weeklyData = JSON.parse(localStorage.getItem("weeklyData")) || {};
+        let weeklyTotal = 0;
+
+        for (let i = 0; i < 7; i++) {
+            let date = new Date(startOfWeek);
+            date.setDate(date.getDate() + i);
+            let dateString = date.toISOString().split("T")[0];
+
+            if (weeklyData[dateString]) {
+                weeklyTotal += parseFloat(weeklyData[dateString].dailyHours.split(": ")[1]);
+            }
+        }
+
+        document.getElementById("weeklyHours").innerText = `该周带薪工时: ${weeklyTotal.toFixed(2)} 小时`;
+    }
+
+    function clearData() {
+        if (confirm("确定要清除所有数据吗？")) {
+            localStorage.removeItem("weeklyData");
+            document.getElementById("recordedTimes").innerHTML = "";
+            document.getElementById("weeklyHours").innerText = "该周带薪工时: 0 小时";
+        }
+    }
+
+    document.getElementById("weekPicker").addEventListener("change", updateWeeklyHours);
+    document.getElementById("datePicker").addEventListener("change", loadSavedData);
+
+    window.onload = function () {
+        let today = new Date().toISOString().split("T")[0];
+        document.getElementById("datePicker").value = today;
+        loadSavedData();
+    };
+</script>
+</body>
+</html>
